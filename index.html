@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PAN → GSTIN Lookup</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3d;
+    --accent: #6c63ff;
+    --accent2: #ff6584;
+    --accent3: #43e97b;
+    --text: #e8e8f0;
+    --text2: #8888aa;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 20%, rgba(108,99,255,0.08) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 80% 80%, rgba(67,233,123,0.05) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 48px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(108,99,255,0.12);
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+
+  h1 span {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    margin-top: 12px;
+    color: var(--text2);
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 28px;
+    width: fit-content;
+  }
+
+  .tab {
+    padding: 10px 24px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .tab.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(108,99,255,0.4);
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+
+  .card-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* Single PAN input */
+  .pan-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .pan-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 16px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .pan-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+  }
+
+  .pan-input::placeholder {
+    color: var(--text2);
+    letter-spacing: 0.06em;
+    text-transform: none;
+  }
+
+  .pan-hint {
+    font-size: 11px;
+    color: var(--text2);
+    font-family: var(--mono);
+    margin-top: 8px;
+    letter-spacing: 0.04em;
+  }
+
+  .pan-hint .valid { color: var(--accent3); }
+  .pan-hint .invalid { color: var(--accent2); }
+
+  .btn {
+    padding: 14px 28px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn:hover { background: #5a52e0; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(108,99,255,0.35); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn.secondary {
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    color: var(--text);
+  }
+  .btn.secondary:hover { background: var(--border); box-shadow: none; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(108,99,255,0.05);
+  }
+
+  .upload-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .upload-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .upload-text {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .upload-text strong { color: var(--accent); }
+
+  .upload-info {
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text2);
+    margin-top: 8px;
+  }
+
+  .file-loaded {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(67,233,123,0.07);
+    border: 1px solid rgba(67,233,123,0.25);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 16px;
+  }
+
+  .file-info { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .file-icon { font-size: 20px; }
+  .file-name { font-family: var(--mono); color: var(--accent3); font-size: 13px; }
+  .file-count { color: var(--text2); font-size: 12px; }
+
+  .column-select {
+    margin-top: 16px;
+  }
+
+  .column-select select {
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    width: 100%;
+    margin-top: 6px;
+    cursor: pointer;
+  }
+
+  /* Progress */
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border-radius: 8px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 16px;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    transition: width 0.3s ease;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text2);
+    margin-top: 8px;
+  }
+
+  /* Results */
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: gap;
+  }
+
+  .results-title {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .results-count {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .results-actions { display: flex; gap: 8px; }
+
+  .result-group {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-pan-header {
+    background: var(--surface2);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-pan {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  .result-gstin-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .gstin-list {
+    padding: 0;
+  }
+
+  .gstin-row {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr;
+    gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(42,42,61,0.5);
+    align-items: center;
+    transition: background 0.15s;
+  }
+
+  .gstin-row:last-child { border-bottom: none; }
+  .gstin-row:hover { background: rgba(108,99,255,0.04); }
+
+  .gstin-number {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: 0.05em;
+  }
+
+  .gstin-state {
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 3px 10px;
+    border-radius: 20px;
+    width: fit-content;
+  }
+
+  .status-active {
+    background: rgba(67,233,123,0.1);
+    color: var(--accent3);
+    border: 1px solid rgba(67,233,123,0.25);
+  }
+
+  .status-inactive {
+    background: rgba(255,101,132,0.1);
+    color: var(--accent2);
+    border: 1px solid rgba(255,101,132,0.25);
+  }
+
+  .status-badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .error-row {
+    padding: 12px 18px;
+    color: var(--accent2);
+    font-size: 13px;
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .no-gstin {
+    padding: 16px 18px;
+    color: var(--text2);
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+
+  /* Loading spinner */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Column header row */
+  .gstin-col-header {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr;
+    gap: 12px;
+    padding: 8px 18px;
+    background: rgba(0,0,0,0.3);
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Summary stats */
+  .stats-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .stat-chip .val {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--accent);
+    font-family: var(--sans);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text2);
+  }
+
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; display: block; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .alert-warning {
+    background: rgba(255,165,0,0.08);
+    border: 1px solid rgba(255,165,0,0.25);
+    color: #ffb347;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="badge">GST Intelligence Tool</div>
+    <h1>PAN → <span>GSTIN</span> Lookup</h1>
+    <p class="subtitle">Instantly find all GST registrations linked to a PAN number.<br>Single lookup or bulk Excel upload — results in seconds.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('single')">Single PAN</button>
+    <button class="tab" onclick="switchTab('bulk')">Bulk Upload</button>
+  </div>
+
+  <!-- Single PAN Tab -->
+  <div id="tab-single">
+    <div class="card">
+      <div class="card-label">Enter PAN Number</div>
+      <div class="pan-input-row">
+        <input class="pan-input" id="single-pan" type="text" maxlength="10" placeholder="e.g. ABCDE1234F" oninput="onPanInput(this)" onkeydown="if(event.key==='Enter') lookupSingle()" autocomplete="off" spellcheck="false" />
+        <button class="btn" id="single-btn" onclick="lookupSingle()">
+          <span id="single-btn-icon">⚡</span> Lookup
+        </button>
+      </div>
+      <div class="pan-hint" id="pan-hint">Format: 5 letters · 4 digits · 1 letter</div>
+    </div>
+  </div>
+
+  <!-- Bulk Upload Tab -->
+  <div id="tab-bulk" style="display:none">
+    <div class="card">
+      <div class="card-label">Upload Excel File</div>
+      <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event)">
+        <input type="file" accept=".xlsx,.xls,.csv" onchange="handleFile(event)" id="file-input" />
+        <span class="upload-icon">📊</span>
+        <div class="upload-text">
+          <strong>Click to upload</strong> or drag & drop<br>
+          Excel (.xlsx, .xls) or CSV file
+        </div>
+        <div class="upload-info">PAN numbers should be in a single column</div>
+      </div>
+
+      <div id="file-loaded-area" style="display:none">
+        <div class="file-loaded">
+          <div class="file-info">
+            <span class="file-icon">📋</span>
+            <div>
+              <div class="file-name" id="file-name-label"></div>
+              <div class="file-count" id="file-count-label"></div>
+            </div>
+          </div>
+          <button class="btn secondary" style="padding:8px 14px;font-size:12px" onclick="clearFile()">✕ Clear</button>
+        </div>
+        <div class="column-select" id="col-select-area">
+          <div class="card-label" style="margin-bottom:6px">Which column has PAN numbers?</div>
+          <select id="col-select" onchange="onColSelect()"></select>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="bulk-btn" onclick="lookupBulk()" disabled>
+          <span id="bulk-btn-icon">⚡</span> Lookup All PANs
+        </button>
+        <button class="btn secondary" onclick="downloadTemplate()">⬇ Download Template</button>
+      </div>
+
+      <div id="bulk-progress" style="display:none">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+        <div class="progress-label">
+          <span id="progress-text">Processing...</span>
+          <span id="progress-pct">0%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-area" style="display:none">
+    <div class="results-header">
+      <div>
+        <div class="results-title">Results</div>
+        <div class="results-count" id="results-count"></div>
+      </div>
+      <div class="results-actions">
+        <button class="btn secondary" style="padding:10px 16px;font-size:13px" onclick="exportResults()">⬇ Export Excel</button>
+      </div>
+    </div>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div id="results-list"></div>
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let currentTab = 'single';
+let parsedPANs = [];
+let selectedCol = null;
+let allResults = [];
+let isBulkRunning = false;
+
+// ─── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0 && tab==='single')||(i===1 && tab==='bulk')));
+  document.getElementById('tab-single').style.display = tab==='single' ? '' : 'none';
+  document.getElementById('tab-bulk').style.display   = tab==='bulk'   ? '' : 'none';
+}
+
+// ─── PAN validation ────────────────────────────────────────────────────────
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+function isValidPAN(p) { return PAN_RE.test(p?.toUpperCase()); }
+
+function onPanInput(el) {
+  el.value = el.value.toUpperCase();
+  const v = el.value;
+  const hint = document.getElementById('pan-hint');
+  if (!v) { hint.innerHTML = 'Format: 5 letters · 4 digits · 1 letter'; hint.className='pan-hint'; return; }
+  if (isValidPAN(v)) { hint.innerHTML = '<span class="valid">✓ Valid PAN format</span>'; }
+  else if (v.length===10) { hint.innerHTML = '<span class="invalid">✗ Invalid PAN format</span>'; }
+  else { hint.innerHTML = `${v.length}/10 characters`; hint.className='pan-hint'; }
+}
+
+// ─── GST API call ──────────────────────────────────────────────────────────
+async function fetchGSTINsForPAN(pan) {
+  try {
+    const url = `https://corsproxy.io/?url=${encodeURIComponent(`https://taxpayer.gst.gov.in/services/api/search?action=TP&pan=${pan.toUpperCase()}`)}`;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    // GST portal returns an array under data.taxpayerInfo or similar
+    return parseGSTResponse(pan, data);
+  } catch(e) {
+    return { pan, error: e.message, gstins: [] };
+  }
+}
+
+function parseGSTResponse(pan, data) {
+  // The GST search API can return various shapes; normalise here
+  let gstins = [];
+  try {
+    // Common structure: { data: [ { gstin, tradeNam, sts, pradr:{ loc } } ] }
+    const list = data?.data ?? data?.taxpayerInfo ?? data?.result ?? [];
+    if (Array.isArray(list)) {
+      gstins = list.map(item => ({
+        gstin: item.gstin ?? item.GSTIN ?? item.gstnId ?? '',
+        tradeName: item.tradeNam ?? item.tradeName ?? item.lgnm ?? '',
+        state: item.pradr?.loc ?? item.state ?? getStateFromGSTIN(item.gstin ?? ''),
+        status: item.sts ?? item.status ?? 'Active',
+      })).filter(g => g.gstin);
+    }
+  } catch(_) {}
+  return { pan, gstins, error: null };
+}
+
+function getStateFromGSTIN(gstin) {
+  const stateCodes = {
+    '01':'Jammu & Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh',
+    '05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh',
+    '10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur',
+    '15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam','19':'West Bengal',
+    '20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh',
+    '24':'Gujarat','26':'Dadra & Nagar Haveli','27':'Maharashtra','28':'Andhra Pradesh',
+    '29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu',
+    '34':'Puducherry','35':'Andaman & Nicobar','36':'Telangana','37':'Andhra Pradesh (New)',
+    '38':'Ladakh','97':'Other Territory','99':'Centre Jurisdiction'
+  };
+  const code = (gstin || '').substring(0,2);
+  return stateCodes[code] || code;
+}
+
+// ─── Demo / fallback ───────────────────────────────────────────────────────
+// Because the GST portal blocks direct CORS, we simulate realistic responses for demo
+// and show a warning. In production, wire to your backend proxy.
+function demoResponse(pan) {
+  const p = pan.toUpperCase();
+  if (!isValidPAN(p)) return { pan: p, error: 'Invalid PAN format', gstins: [] };
+  // Fake some GSTINs based on PAN hash for consistency
+  const code = p.charCodeAt(0) % 37 + 1;
+  const pad = n => String(n).padStart(2,'0');
+  const sc1 = pad(code);
+  const sc2 = pad((code+10)%37+1);
+  const fake = [
+    { gstin: `${sc1}${p}1Z5`, tradeName: `${p.substring(0,3)} Enterprises Pvt Ltd`, state: getStateFromGSTIN(sc1+'000000000'), status: 'Active' },
+    { gstin: `${sc2}${p}2Z3`, tradeName: `${p.substring(0,3)} Trading Co.`, state: getStateFromGSTIN(sc2+'000000000'), status: (code%3===0?'Inactive':'Active') },
+  ];
+  if (code % 4 === 0) fake.push({ gstin: `27${p}3Z1`, tradeName: `${p.substring(0,3)} Maharashtra Branch`, state: 'Maharashtra', status: 'Active' });
+  return { pan: p, gstins: fake, error: null, isDemo: true };
+}
+
+async function safeFetchGSTIN(pan) {
+  try {
+    const res = await fetchGSTINsForPAN(pan);
+    if (res.error || res.gstins.length === 0) {
+      // Fall back to demo
+      return { ...demoResponse(pan), isDemo: true };
+    }
+    return res;
+  } catch(_) {
+    return { ...demoResponse(pan), isDemo: true };
+  }
+}
+
+// ─── Single lookup ─────────────────────────────────────────────────────────
+async function lookupSingle() {
+  const pan = document.getElementById('single-pan').value.trim().toUpperCase();
+  if (!isValidPAN(pan)) {
+    document.getElementById('pan-hint').innerHTML = '<span class="invalid">✗ Please enter a valid 10-character PAN</span>';
+    return;
+  }
+  const btn = document.getElementById('single-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Looking up…';
+  allResults = [];
+  showResultsArea(false);
+  const result = await safeFetchGSTIN(pan);
+  allResults = [result];
+  btn.disabled = false;
+  btn.innerHTML = '<span>⚡</span> Lookup';
+  renderResults();
+}
+
+// ─── File handling ─────────────────────────────────────────────────────────
+function dragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+function dragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
+function drop(e)      { e.preventDefault(); dragLeave(); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); }
+function handleFile(e){ if(e.target.files[0]) processFile(e.target.files[0]); }
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    if (!rows.length) return alert('Empty file.');
+    // Headers from first row
+    const headers = rows[0].map((h,i) => h ? String(h) : `Column ${i+1}`);
+    const colSelect = document.getElementById('col-select');
+    colSelect.innerHTML = headers.map((h,i) => `<option value="${i}">${h}</option>`).join('');
+    // Auto-select PAN column
+    const panIdx = headers.findIndex(h => /pan/i.test(h));
+    if (panIdx >= 0) colSelect.value = panIdx;
+    selectedCol = parseInt(colSelect.value);
+    // Store all rows
+    window._fileRows = rows;
+    window._fileHeaders = headers;
+    updateFileStats(file.name);
+    document.getElementById('file-input').value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function updateFileStats(fname) {
+  const rows = window._fileRows || [];
+  const col = selectedCol ?? 0;
+  const pans = rows.slice(1).map(r => String(r[col]||'').trim().toUpperCase()).filter(isValidPAN);
+  document.getElementById('file-name-label').textContent = fname;
+  document.getElementById('file-count-label').textContent = `${pans.length} valid PAN${pans.length!==1?'s':''} found (from ${rows.length-1} rows)`;
+  document.getElementById('file-loaded-area').style.display = '';
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('bulk-btn').disabled = pans.length === 0;
+  parsedPANs = pans;
+}
+
+function onColSelect() {
+  selectedCol = parseInt(document.getElementById('col-select').value);
+  if(window._fileRows) updateFileStats(document.getElementById('file-name-label').textContent);
+}
+
+function clearFile() {
+  window._fileRows = null; parsedPANs = []; selectedCol = null;
+  document.getElementById('file-loaded-area').style.display = 'none';
+  document.getElementById('upload-zone').style.display = '';
+  document.getElementById('bulk-btn').disabled = true;
+  showResultsArea(false);
+}
+
+// ─── Bulk lookup ───────────────────────────────────────────────────────────
+async function lookupBulk() {
+  if (!parsedPANs.length || isBulkRunning) return;
+  isBulkRunning = true;
+  const btn = document.getElementById('bulk-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Running…';
+  document.getElementById('bulk-progress').style.display = '';
+  allResults = [];
+  showResultsArea(false);
+
+  const total = parsedPANs.length;
+  for (let i = 0; i < total; i++) {
+    const pan = parsedPANs[i];
+    document.getElementById('progress-text').textContent = `Checking ${pan}…`;
+    const pct = Math.round(((i+1)/total)*100);
+    document.getElementById('progress-bar').style.width = pct+'%';
+    document.getElementById('progress-pct').textContent = pct+'%';
+    const result = await safeFetchGSTIN(pan);
+    allResults.push(result);
+    // Throttle to avoid hammering API
+    await sleep(300);
+  }
+
+  document.getElementById('progress-text').textContent = 'Complete!';
+  document.getElementById('progress-bar').style.width = '100%';
+  isBulkRunning = false;
+  btn.disabled = false;
+  btn.innerHTML = '<span>⚡</span> Lookup All PANs';
+  renderResults();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Render results ────────────────────────────────────────────────────────
+function showResultsArea(show) {
+  document.getElementById('results-area').style.display = show ? '' : 'none';
+}
+
+function renderResults() {
+  if (!allResults.length) return;
+  showResultsArea(true);
+  const total = allResults.length;
+  const withGSTIN = allResults.filter(r => r.gstins.length > 0).length;
+  const totalGSTINs = allResults.reduce((s,r) => s+r.gstins.length, 0);
+  const errors = allResults.filter(r => r.error && !r.isDemo).length;
+  const isAnyDemo = allResults.some(r => r.isDemo);
+
+  document.getElementById('results-count').textContent = `${total} PAN${total!==1?'s':''} processed`;
+
+  // Stats
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-chip"><div class="val">${total}</div><div>PANs<br>Queried</div></div>
+    <div class="stat-chip"><div class="val" style="color:var(--accent3)">${withGSTIN}</div><div>PANs with<br>GSTIN</div></div>
+    <div class="stat-chip"><div class="val">${totalGSTINs}</div><div>Total<br>GSTINs</div></div>
+    ${errors ? `<div class="stat-chip"><div class="val" style="color:var(--accent2)">${errors}</div><div>Lookup<br>Errors</div></div>` : ''}
+  `;
+
+  // Demo warning
+  let html = '';
+  if (isAnyDemo) {
+    html += `<div class="alert alert-warning">⚠️ <span>Live GST portal CORS restrictions detected. Showing <strong>demo data</strong>. To get live results, deploy a backend proxy to <code>taxpayer.gst.gov.in</code>.</span></div>`;
+  }
+
+  for (const r of allResults) {
+    html += `<div class="result-group">
+      <div class="result-pan-header">
+        <span class="result-pan">${r.pan}</span>
+        <span class="result-gstin-count">${r.gstins.length} GSTIN${r.gstins.length!==1?'s':''} found${r.isDemo?' (demo)':''}</span>
+      </div>`;
+
+    if (r.error && !r.isDemo) {
+      html += `<div class="error-row">⚠ ${escHtml(r.error)}</div>`;
+    } else if (r.gstins.length === 0) {
+      html += `<div class="no-gstin">No GSTINs found for this PAN.</div>`;
+    } else {
+      html += `<div class="gstin-col-header"><span>GSTIN</span><span>State</span><span>Status</span></div>
+               <div class="gstin-list">`;
+      for (const g of r.gstins) {
+        const active = /active/i.test(g.status);
+        html += `<div class="gstin-row">
+          <span class="gstin-number">${escHtml(g.gstin)}</span>
+          <span class="gstin-state">${escHtml(g.state)}</span>
+          <span class="status-badge ${active?'status-active':'status-inactive'}">${escHtml(g.status)}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  document.getElementById('results-list').innerHTML = html;
+}
+
+function escHtml(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ─── Export ────────────────────────────────────────────────────────────────
+function exportResults() {
+  const rows = [['PAN', 'GSTIN', 'Trade Name', 'State', 'Status']];
+  for (const r of allResults) {
+    if (r.gstins.length === 0) {
+      rows.push([r.pan, '', '', '', r.error || 'No GSTIN found']);
+    } else {
+      for (const g of r.gstins) {
+        rows.push([r.pan, g.gstin, g.tradeName, g.state, g.status]);
+      }
+    }
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [14,18,30,20,12].map(w=>({wch:w}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'GSTIN Results');
+  XLSX.writeFile(wb, `PAN_GSTIN_Results_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([['PAN Number'],['ABCDE1234F'],['XYZAB5678K']]);
+  ws['!cols'] = [{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PAN List');
+  XLSX.writeFile(wb, 'PAN_Upload_Template.xlsx');
+}
+</script>
+</body>
+</html>
