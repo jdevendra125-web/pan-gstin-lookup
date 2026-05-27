@@ -1,10 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/gstin.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
